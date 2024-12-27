@@ -1,0 +1,33 @@
+# -------------------------------------------------------------------------
+
+# CONCATENACION DE PRECIOS ------------------------------------------------
+
+# -------------------------------------------------------------------------
+
+# Librerias ---------------------------------------------------------------
+
+require(pacman)
+options(scipen = 999)
+p_load(tidyverse,lubridate,stringi,openxlsx,readxl,magrittr,gtools)
+
+
+setwd("C:/Users/ivan.villalba/Documents/R Scripts and projects/VALORACION P70/CREDITOS AQ/Promocomercio Base Créditos-20240725T134120Z-001/Promocomercio Base Créditos")
+
+x <- lapply(c(2021,2022,2023,2024), function(x){
+                  list.files(paste0(getwd(),'/',as.character(x)),full.names = T)})
+
+y <- reduce(x,append)
+nombres_y <- data.frame(y=y) %>% mutate(nombres_y = str_replace(str_extract(y,pattern = '[a-zA-Z]+_?\\d+.xlsx$'),'.xlsx',''))
+
+docus <- lapply(y, read_excel,skip=3)
+
+names(docus) <- nombres_y$nombres_y
+
+a <- lapply(docus, function (x){x %>% select(any_of(c(1,5)))}) %>% reduce(bind_rows)
+
+Precio_compra_p70 <- a %>% filter(!is.na(`Precio de compra`) & !is.na(Credito)) %>% distinct() %>% arrange(Credito)                     
+
+
+openxlsx::write.xlsx(Precio_compra_p70,'PRECIOS DE CREDITOS ADQUIRIDOS POR PROMOCOMERCIO.xlsx')
+
+#rm(list = ls()[!ls() %in% c('Precio_compra_p70')])

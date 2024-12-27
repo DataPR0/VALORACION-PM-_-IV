@@ -1,0 +1,42 @@
+
+# -------------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------------
+
+
+# VALORACION --------------------------------------------------------------
+
+setwd("C:/Users/ivan.villalba/Documents/R Scripts and projects/VALORACION P70/ARCHIVO PARA VALORACION/")
+
+CARTERA_PD70 <- read_excel('Base creditos PM Agosto_24.xlsx', skip = 3)
+VALORACION_PD70 <- read_csv2('VALORACION_PRUEBA_pd70.csv')
+
+
+ZZ <- CARTERA_PD70 %>% filter(`Saldo Actual` > 0.1) %>% left_join(VALORACION_PD70,
+                           by = c('Credito'='credito'))  %>% filter(!is.na(valor_pago_ttl_canc))
+
+tabla_valoracion <-ZZ %>% group_by(tipo_producto) %>% summarise(Creditos = n(),
+                                             Deuda_total = sum(valor_pago_ttl_canc, na.rm = T),
+                                             Saldo_a_capital = sum(`Saldo Actual`,na.rm = T),
+                                             Precio_de_compra= sum(`Precio de compra.x`, na.rm = T),
+                                             Valoracion = sum(Valoracion_pd,na.rm = T)) %>%
+                                  mutate(p =Valoracion/Precio_de_compra-1)
+
+tabla_p70 <- ZZ %>% filter(tipo_producto==70) %>% select(Credito,'Saldo a capital'=`Saldo Actual`, Compra = `Precio de compra.x`, Valoracion_pd) %>%
+                                                  mutate(VG = Valoracion_pd/Compra -1  ,
+                                                         'Valoracion con garantia' = ifelse(is.na(VG),0,VG)) %>% select(-c(Valoracion_pd,VG))
+                                                        
+
+tabla_p71 <- ZZ %>% filter(tipo_producto==71) %>% select(Credito,'Saldo a capital'=`Saldo Actual`, Compra = `Precio de compra.x`) %>%
+                                                  mutate('Valoracion con garantia' = 0)
+
+Lista_tablas_valoracion = list(Resumen = tabla_valoracion, Vigentes_70 = tabla_p70, Vigentes_71 = tabla_p71)
+
+openxlsx::write.xlsx(Lista_tablas_valoracion,'Resumen y créditos vigentes Agosto 2024_p.xlsx')
+
+
+ZZ %>% filter(is.na(tipo_producto)) %>% select(Credito)
+
+Tabla_comite %>% filter(credito == 192977 ) %>% view()
+ZZ %>% filter(Credito == 192977) %>% view()

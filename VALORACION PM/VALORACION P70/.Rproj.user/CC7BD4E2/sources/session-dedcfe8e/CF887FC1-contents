@@ -1,0 +1,96 @@
+
+# CRUCE CARTERA DIA -------------------------------------------------------
+Conexion_comite <- DBI::dbConnect(odbc::odbc(),Driver = "SQL Server",Server = '192.168.50.38\\DW_FZ',  
+                                  Trusted_Connection = "yes",timeout = 1000, database = "DW_FZ")
+
+QUERY_REC <- "SELECT credito, id_fecha_efe_mov, cod_trans, valor_pago_capital FROM DW_FZ.dbo.Fact_Recaudo WHERE cod_trans = 88"
+Tabla_rec <- DBI::dbGetQuery(conn = Conexion_comite, statement = QUERY_REC)
+
+query_dia <- "SELECT saldo_capital,
+                    tipo_producto,
+                    credito,
+                    valor_pago_ttl_canc
+                FROM [DW_FZ].[dbo].[Fact_Cartera_Dia] 
+                where tipo_producto in (70,71) and ind_cierre = 1 and id_fecha = 20240801 and saldo_capital > 0"
+
+tabla_dia <- DBI::dbGetQuery(conn = Conexion_comite, statement = query_dia)
+
+# QUERY LTV CAROLINA ------------------------------------------------------
+
+query_LTV <- "select l.credito, l.id_fecha, l.tipo_producto,l.conteo_garantias, l.LTV, l.valor_garantia_final,
+                    coalesce(l.libre_inversion_o_vehicular,'') as libre_inversion_o_vehicular, coalesce(rr.marc_desc,'') as marca_refi_restru
+                    from Cartera175.dbo.ltv l
+                    left join (select t.credito,marc_desc from (
+                    select *,ROW_NUMBER() over (partition by credito order by id_fecha) as n,
+                    case when marcacion = 'R' then 'Refinanciacion'
+                        else 'Reestructuracion' end as marc_desc
+                    from[DW_FZ].[dbo].[Fact_Cartera_Marcacion_RFS] where marcacion != 'S') as t
+                    where n=1) rr on l.credito = rr.credito
+                    where l.tipo_producto = 70
+                    order by l.id_fecha"
+
+
+tabla_ltv <- DBI::dbGetQuery(conn = Conexion_comite, statement = query_LTV)
+tabla_ltv2 <- tabla_ltv %>% filter(id_fecha == 20240731)
+
+# -------------------------------------------------------------------------
+TABLA_DIA <- a %>% left_join(tabla_dia, by = "credito")
+
+# -------------------------------------------------------------------------
+
+TABLA_DIA <- TABLA_DIA %>% left_join(tabla_ltv2 %>% select(credito,LTV,valor_garantia_final,libre_inversion_o_vehicular,marca_refi_restru)) 
+
+
+TABLA_VAL_JULIO <- TABLA_DIA %>% filter(fecha_vigencia == 20240731)
+
+
+daciones_julio <- Tabla_rec %>% mutate(Añomes= str_sub(id_fecha_efe_mov,1,6)) %>% filter(Añomes == '202407') %>% distinct()
+prueba_julio <- TABLA_VAL_JULIO %>% left_join(daciones_julio %>% select(credito, cod_trans),by='credito') %>% distinct()
+
+
+
+
+#JULIO_VALORACION <- TABLA_VAL_JULIO %>% left_join(TABLA_JUNIO %>% select(Credito,`Saldo Actual`,`Precio de compra`), by=c('credito'='Credito'))
+
+JULIO_VALORACION <- TABLA_VAL_JULIO %>%
+                    mutate(Valoracion_pd = case_when(
+                                              tasa_recuperacion_anual > 0 & LTV > 1 ~ `Precio de compra`*(1+ tasa_recuperacion_anual)*(1+(LTV/(Duracion_p70))),
+                                              tasa_recuperacion_anual == 0 & LTV > 1 ~ `Precio de compra`*(1+0.75*LTV),
+                                              TRUE ~ `Precio de compra`*(1+tasa_recuperacion_anual)))
+
+
+JULIO_VALORACION <- prueba_julio %>%
+                        mutate(Valoracion_pd = case_when(
+                                                is.na(cod_trans) ~ case_when(
+                                                  tasa_recuperacion_anual > 0 & LTV > 1 ~ `Precio de compra`*(1+tasa_recuperacion_anual)*(1+(LTV/(Duracion_p70))),
+                                                  tasa_recuperacion_anual == 0 & LTV > 1 ~ `Precio de compra`*(1+0.75*LTV),
+                                                  TRUE ~ `Precio de compra`*(1+tasa_recuperacion_anual)),
+                                                TRUE ~ 0)) 
+    
+
+
+# -------------------------------------------------------------------------
+
+hist(prueba_julio$Duracion_p70)
+# -------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------
+
+# RESUMENES DE TOTALES DEUDA, SC  -----------------------------------------
+
+p71 <- tabla_dia %>% group_by(tipo_producto) %>% 
+                     summarise(suma_deuda=sum(valor_pago_ttl_canc,na.rm = T),
+                               suma_sc = sum(Precio_compra_p70),
+                               n = n()) %>% view()
+
+
+# TASA DE VALORIZACION ----------------------------------------------------
+vp70 <- JULIO_VALORACION %>% summarise(suma_valoracion= sum(Valoracion_pd,na.rm = T),
+                                       suma_pc = sum(`Precio de compra`,na.rm = T)) %>%
+                              mutate(p=suma_valoracion/suma_pc) %>% view()
+
+# -------------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------------
+
