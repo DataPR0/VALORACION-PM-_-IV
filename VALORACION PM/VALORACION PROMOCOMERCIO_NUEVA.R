@@ -302,4 +302,4 @@ Lista_tablas_valoracion = list(Cartera = CARTERA_PD70,
 meses <- c("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
 
-openxlsx::write.xlsx(Lista_tablas_valoracion,paste0('Resumen y créditos vigentes ',meses[month(Sys.Date())],'.xlsx'))
+openxlsx::write.xlsx(Lista_tablas_valoracion,paste0('Resumen y créditos vigentes ',meses[month(Sys.Date())-1],'.xlsx'))
